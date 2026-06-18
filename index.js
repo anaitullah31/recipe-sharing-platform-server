@@ -27,6 +27,7 @@ async function run() {
     const userCollections = client.db("recipehub").collection("user");
     const recipeCollections = client.db("recipehub").collection("recipes");
     const favoriteCollections = client.db("recipehub").collection("favorites");
+    const reportCollections = client.db("recipehub").collection("reports");
 
     // Users API's
     app.get("/users", async (req, res) => {
@@ -290,6 +291,42 @@ async function run() {
       }
     });
 
+    // Reports API's
+    app.post("/reports", async (req, res) => {
+      try {
+        const { recipeId, recipeName, userEmail, reason, comment } = req.body;
+
+        if (!recipeId || !userEmail || !reason) {
+          return res.status(400).send({
+            success: false,
+            message: "recipeId, userEmail and reason are required",
+          });
+        }
+
+        const reportData = {
+          recipeId,
+          recipeName,
+          userEmail,
+          reason,
+          comment: comment || "",
+          status: "pending",
+          createdAt: new Date().toISOString(),
+        };
+
+        const result = await reportCollections.insertOne(reportData);
+
+        res.send({
+          success: true,
+          message: "Report submitted successfully",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
+    });
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
