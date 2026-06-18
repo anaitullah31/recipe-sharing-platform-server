@@ -26,6 +26,7 @@ async function run() {
     await client.connect();
     const userCollections = client.db("recipehub").collection("user");
     const recipeCollections = client.db("recipehub").collection("recipes");
+    const favoriteCollections = client.db("recipehub").collection("favorites");
 
     // Users API's
     app.get("/users", async (req, res) => {
@@ -115,63 +116,179 @@ async function run() {
       }
     });
 
-   app.patch("/recipes/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { userEmail } = req.body;
+    app.patch("/recipes/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { userEmail } = req.body;
 
-    if (!userEmail) {
-      return res.status(400).send({
-        success: false,
-        message: "User email is required",
-      });
-    }
+        if (!userEmail) {
+          return res.status(400).send({
+            success: false,
+            message: "User email is required",
+          });
+        }
 
-    const filter = { _id: new ObjectId(id) };
+        const filter = { _id: new ObjectId(id) };
 
-    const recipe = await recipeCollections.findOne(filter);
+        const recipe = await recipeCollections.findOne(filter);
 
-    if (!recipe) {
-      return res.status(404).send({
-        success: false,
-        message: "Recipe not found",
-      });
-    }
+        if (!recipe) {
+          return res.status(404).send({
+            success: false,
+            message: "Recipe not found",
+          });
+        }
 
-    const alreadyLiked = recipe.likedBy?.includes(userEmail);
+        const alreadyLiked = recipe.likedBy?.includes(userEmail);
 
-    if (alreadyLiked) {
-      await recipeCollections.updateOne(filter, {
-        $pull: { likedBy: userEmail },
-        $inc: { likesCount: -1 },
-      });
+        if (alreadyLiked) {
+          await recipeCollections.updateOne(filter, {
+            $pull: { likedBy: userEmail },
+            $inc: { likesCount: -1 },
+          });
 
-      return res.send({
-        success: true,
-        liked: false,
-        likesCount: Math.max((recipe.likesCount || 1) - 1, 0),
-        message: "Recipe unliked",
-      });
-    }
+          return res.send({
+            success: true,
+            liked: false,
+            likesCount: Math.max((recipe.likesCount || 1) - 1, 0),
+            message: "Recipe unliked",
+          });
+        }
 
-    await recipeCollections.updateOne(filter, {
-      $addToSet: { likedBy: userEmail },
-      $inc: { likesCount: 1 },
+        await recipeCollections.updateOne(filter, {
+          $addToSet: { likedBy: userEmail },
+          $inc: { likesCount: 1 },
+        });
+
+        return res.send({
+          success: true,
+          liked: true,
+          likesCount: (recipe.likesCount || 0) + 1,
+          message: "Recipe liked",
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
     });
 
-    return res.send({
-      success: true,
-      liked: true,
-      likesCount: (recipe.likesCount || 0) + 1,
-      message: "Recipe liked",
+    // Favorites API's
+    app.get("/favorites", async (req, res) => {
+      try {
+        const { userEmail, userId } = req.query;
+
+        if (!userEmail && !userId) {
+          return res.status(400).send({
+            success: false,
+            message: "userEmail or userId is required",
+          });
+        }
+        const filter = userEmail ? { userEmail } : { userId };
+        const favorites = await favoriteCollections
+          .find(filter)
+          .sort({ addedAt: -1 })
+          .toArray();
+
+        res.send({
+          success: true,
+          data: favorites,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
     });
-  } catch (error) {
-    res.status(500).send({
-      success: false,
-      message: error.message,
+
+    app.post("/favorites", async (req, res) => {
+      try {
+        const { userEmail, userId, recipeId, recipeName, recipeImage } =
+          req.body;
+
+        if (!userEmail || !userId || !recipeId) {
+          return res.status(400).send({
+            success: false,
+            message: "Missing required fields",
+          });
+        }
+
+        const filter = {
+          userEmail,
+          recipeId,
+        };
+
+        const alreadyFavorite = await favoriteCollections.findOne(filter);
+
+        if (alreadyFavorite) {
+          await favoriteCollections.deleteOne(filter);
+
+          return res.send({
+            success: true,
+            favorited: false,
+            message: "Recipe removed from favorites",
+          });
+        }
+        const favoriteData = {
+          userEmail,
+          userId,
+          recipeId,
+          recipeName,
+          recipeImage,
+          addedAt: new Date().toISOString(),
+        };
+
+        const result = await favoriteCollections.insertOne(favoriteData);
+
+        res.send({
+          success: true,
+          favorited: true,
+          message: "Recipe added to favorites",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
     });
-  }
-});
+
+    app.delete("/favorites/:favoriteId", async (req, res) => {
+      try {
+        const { favoriteId } = req.params;
+
+        if (!ObjectId.isValid(favoriteId)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid favorite id",
+          });
+        }
+
+        const result = await favoriteCollections.deleteOne({
+          _id: new ObjectId(favoriteId),
+        });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Favorite not found",
+          });
+        }
+
+        res.send({
+          success: true,
+          message: "Favorite removed successfully",
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
