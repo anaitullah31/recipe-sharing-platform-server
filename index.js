@@ -8,7 +8,7 @@ const port = 5000;
 app.use(express.json());
 app.use(cors());
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = process.env.MONGO_URI;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -37,6 +37,39 @@ async function run() {
       }
     });
 
+    app.get("/users/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid user id",
+          });
+        }
+
+        const user = await userCollections.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: "User not found",
+          });
+        }
+
+        res.status(200).json(user);
+      } catch (error) {
+        console.error("Error fetching user:", error);
+
+        res.status(500).json({
+          success: false,
+          message: "Failed to fetch user",
+        });
+      }
+    });
+
     // Recipes API's
     app.get("/recipes", async (req, res) => {
       try {
@@ -47,6 +80,37 @@ async function run() {
         res.status(500).json({
           success: false,
           message: "Failed to fetch recipes",
+        });
+      }
+    });
+
+    app.get("/recipes/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid recipe id",
+          });
+        }
+
+        const recipe = await recipeCollections.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!recipe) {
+          return res.status(404).json({
+            success: false,
+            message: "Recipe not found",
+          });
+        }
+
+        res.status(200).json(recipe);
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          message: "Failed to fetch recipe",
         });
       }
     });
