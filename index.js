@@ -115,6 +115,64 @@ async function run() {
       }
     });
 
+   app.patch("/recipes/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userEmail } = req.body;
+
+    if (!userEmail) {
+      return res.status(400).send({
+        success: false,
+        message: "User email is required",
+      });
+    }
+
+    const filter = { _id: new ObjectId(id) };
+
+    const recipe = await recipeCollections.findOne(filter);
+
+    if (!recipe) {
+      return res.status(404).send({
+        success: false,
+        message: "Recipe not found",
+      });
+    }
+
+    const alreadyLiked = recipe.likedBy?.includes(userEmail);
+
+    if (alreadyLiked) {
+      await recipeCollections.updateOne(filter, {
+        $pull: { likedBy: userEmail },
+        $inc: { likesCount: -1 },
+      });
+
+      return res.send({
+        success: true,
+        liked: false,
+        likesCount: Math.max((recipe.likesCount || 1) - 1, 0),
+        message: "Recipe unliked",
+      });
+    }
+
+    await recipeCollections.updateOne(filter, {
+      $addToSet: { likedBy: userEmail },
+      $inc: { likesCount: 1 },
+    });
+
+    return res.send({
+      success: true,
+      liked: true,
+      likesCount: (recipe.likesCount || 0) + 1,
+      message: "Recipe liked",
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
