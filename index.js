@@ -222,7 +222,10 @@ async function run() {
           });
         }
 
-        res.status(200).json(recipe);
+        res.status(200).json({
+          success: true,
+          data: recipe,
+        });
       } catch (error) {
         res.status(500).json({
           success: false,
