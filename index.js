@@ -220,17 +220,16 @@ async function run() {
     app.patch("/recipes/:id", async (req, res) => {
       try {
         const { id } = req.params;
-        const { userEmail } = req.body;
+        const { action, userEmail, updateData } = req.body;
 
-        if (!userEmail) {
+        if (!ObjectId.isValid(id)) {
           return res.status(400).send({
             success: false,
-            message: "User email is required",
+            message: "Invalid recipe id",
           });
         }
 
         const filter = { _id: new ObjectId(id) };
-
         const recipe = await recipeCollections.findOne(filter);
 
         if (!recipe) {
@@ -240,32 +239,82 @@ async function run() {
           });
         }
 
-        const alreadyLiked = recipe.likedBy?.includes(userEmail);
+        // Like / Unlike
+        if (action === "like") {
+          if (!userEmail) {
+            return res.status(400).send({
+              success: false,
+              message: "User email is required",
+            });
+          }
 
-        if (alreadyLiked) {
+          const alreadyLiked = recipe.likedBy?.includes(userEmail);
+
+          if (alreadyLiked) {
+            await recipeCollections.updateOne(filter, {
+              $pull: { likedBy: userEmail },
+              $inc: { likesCount: -1 },
+            });
+
+            return res.send({
+              success: true,
+              liked: false,
+              likesCount: Math.max((recipe.likesCount || 1) - 1, 0),
+              message: "Recipe unliked",
+            });
+          }
+
           await recipeCollections.updateOne(filter, {
-            $pull: { likedBy: userEmail },
-            $inc: { likesCount: -1 },
+            $addToSet: { likedBy: userEmail },
+            $inc: { likesCount: 1 },
           });
 
           return res.send({
             success: true,
-            liked: false,
-            likesCount: Math.max((recipe.likesCount || 1) - 1, 0),
-            message: "Recipe unliked",
+            liked: true,
+            likesCount: (recipe.likesCount || 0) + 1,
+            message: "Recipe liked",
           });
         }
 
-        await recipeCollections.updateOne(filter, {
-          $addToSet: { likedBy: userEmail },
-          $inc: { likesCount: 1 },
-        });
+        // Feature / Unfeature
+        if (action === "feature") {
+          const newFeaturedStatus = !recipe.isFeatured;
 
-        return res.send({
-          success: true,
-          liked: true,
-          likesCount: (recipe.likesCount || 0) + 1,
-          message: "Recipe liked",
+          await recipeCollections.updateOne(filter, {
+            $set: {
+              isFeatured: newFeaturedStatus,
+              updatedAt: new Date().toISOString(),
+            },
+          });
+
+          return res.send({
+            success: true,
+            isFeatured: newFeaturedStatus,
+            message: newFeaturedStatus
+              ? "Recipe marked as featured"
+              : "Recipe removed from featured",
+          });
+        }
+
+        // General recipe update
+        if (action === "update") {
+          await recipeCollections.updateOne(filter, {
+            $set: {
+              ...updateData,
+              updatedAt: new Date().toISOString(),
+            },
+          });
+
+          return res.send({
+            success: true,
+            message: "Recipe updated successfully",
+          });
+        }
+
+        res.status(400).send({
+          success: false,
+          message: "Invalid action",
         });
       } catch (error) {
         res.status(500).send({
