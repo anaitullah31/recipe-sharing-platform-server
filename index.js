@@ -292,6 +292,109 @@ async function run() {
     });
 
     // Reports API's
+    app.get("/reports", async (req, res) => {
+  try {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const status = req.query.status || "all";
+
+    const skip = (page - 1) * limit;
+
+    const matchStage = {};
+
+    if (status !== "all") {
+      matchStage.status = status;
+    }
+
+    const pendingCount = await reportCollections.countDocuments({
+      status: "pending",
+    });
+
+    const resolvedCount = await reportCollections.countDocuments({
+      status: "resolved",
+    });
+
+    const totalReports = await reportCollections.countDocuments(matchStage);
+
+    const reports = await reportCollections
+      .aggregate([
+        {
+          $match: matchStage,
+        },
+        {
+          $addFields: {
+            recipeObjectId: {
+              $convert: {
+                input: "$recipeId",
+                to: "objectId",
+                onError: null,
+                onNull: null,
+              },
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: "recipes",
+            localField: "recipeObjectId",
+            foreignField: "_id",
+            as: "recipe",
+          },
+        },
+        {
+          $unwind: {
+            path: "$recipe",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $addFields: {
+            recipeImage: {
+              $ifNull: ["$recipe.recipeImage", "$recipeImage"],
+            },
+            recipeName: {
+              $ifNull: ["$recipe.recipeName", "$recipeName"],
+            },
+          },
+        },
+        {
+          $sort: {
+            createdAt: -1,
+          },
+        },
+        {
+          $skip: skip,
+        },
+        {
+          $limit: limit,
+        },
+      ])
+      .toArray();
+
+    res.send({
+      success: true,
+      data: reports,
+      stats: {
+        total: totalReports,
+        pending: pendingCount,
+        resolved: resolvedCount,
+      },
+      pagination: {
+        page,
+        limit,
+        totalPages: Math.ceil(totalReports / limit),
+        hasPrevPage: page > 1,
+        hasNextPage: page < Math.ceil(totalReports / limit),
+      },
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
     app.post("/reports", async (req, res) => {
       try {
         const { recipeId, recipeName, userEmail, reason, comment } = req.body;
