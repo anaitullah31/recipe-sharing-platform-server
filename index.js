@@ -173,18 +173,32 @@ async function run() {
     });
 
     // Recipes API's
-    app.get("/recipes", async (req, res) => {
-      try {
-        const result = await recipeCollections.find({}).toArray();
-        res.status(200).json(result);
-      } catch (error) {
-        console.error("Error fetching recipes:", error);
-        res.status(500).json({
-          success: false,
-          message: "Failed to fetch recipes",
-        });
-      }
+app.get("/recipes", async (req, res) => {
+  try {
+    const { authorEmail } = req.query;
+
+    const filter = {};
+
+    if (authorEmail) {
+      filter.authorEmail = authorEmail;
+    }
+
+    const recipes = await recipeCollections
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.send({
+      success: true,
+      data: recipes,
     });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message,
+    });
+  }
+});
 
     app.get("/recipes/:id", async (req, res) => {
       try {
