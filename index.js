@@ -105,6 +105,73 @@ async function run() {
       }
     });
 
+    app.patch("/users/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { currentUserEmail, currentUserId } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid user id",
+          });
+        }
+
+        const targetUser = await userCollections.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!targetUser) {
+          return res.status(404).send({
+            success: false,
+            message: "User not found",
+          });
+        }
+
+        // Cannot block yourself
+        if (
+          targetUser.email === currentUserEmail ||
+          targetUser._id.toString() === currentUserId
+        ) {
+          return res.status(403).send({
+            success: false,
+            message: "You cannot block yourself",
+          });
+        }
+
+        // Cannot block another admin
+        if (targetUser.role === "admin") {
+          return res.status(403).send({
+            success: false,
+            message: "Admin users cannot be blocked",
+          });
+        }
+
+        const newStatus = targetUser.status === "active" ? "blocked" : "active";
+
+        await userCollections.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              status: newStatus,
+              updatedAt: new Date(),
+            },
+          },
+        );
+
+        res.send({
+          success: true,
+          message: `User ${newStatus} successfully`,
+          status: newStatus,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
+    });
+
     // Recipes API's
     app.get("/recipes", async (req, res) => {
       try {
