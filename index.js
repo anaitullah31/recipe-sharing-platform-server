@@ -173,32 +173,32 @@ async function run() {
     });
 
     // Recipes API's
-app.get("/recipes", async (req, res) => {
-  try {
-    const { authorEmail } = req.query;
+    app.get("/recipes", async (req, res) => {
+      try {
+        const { authorEmail } = req.query;
 
-    const filter = {};
+        const filter = {};
 
-    if (authorEmail) {
-      filter.authorEmail = authorEmail;
-    }
+        if (authorEmail) {
+          filter.authorEmail = authorEmail;
+        }
 
-    const recipes = await recipeCollections
-      .find(filter)
-      .sort({ createdAt: -1 })
-      .toArray();
+        const recipes = await recipeCollections
+          .find(filter)
+          .sort({ createdAt: -1 })
+          .toArray();
 
-    res.send({
-      success: true,
-      data: recipes,
+        res.send({
+          success: true,
+          data: recipes,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
     });
-  } catch (error) {
-    res.status(500).send({
-      success: false,
-      message: error.message,
-    });
-  }
-});
 
     app.get("/recipes/:id", async (req, res) => {
       try {
@@ -227,6 +227,29 @@ app.get("/recipes", async (req, res) => {
         res.status(500).json({
           success: false,
           message: "Failed to fetch recipe",
+        });
+      }
+    });
+
+    app.post("/recipes", async (req, res) => {
+      try {
+        const recipeData = {
+          ...req.body,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        const result = await recipeCollections.insertOne(recipeData);
+
+        res.send({
+          success: true,
+          message: "Recipe created successfully",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
         });
       }
     });
