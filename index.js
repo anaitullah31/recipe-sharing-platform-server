@@ -32,10 +32,43 @@ async function run() {
     // Users API's
     app.get("/users", async (req, res) => {
       try {
-        const result = await userCollections.find({}).toArray();
-        res.status(200).json(result);
+        const now = new Date();
+
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(now.getDate() - 7);
+
+        const users = await userCollections
+          .find({})
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        const totalUsers = await userCollections.countDocuments();
+
+        const activeUsers = await userCollections.countDocuments({
+          status: "active",
+        });
+
+        const newThisWeek = await userCollections.countDocuments({
+          createdAt: {
+            $gte: sevenDaysAgo,
+          },
+        });
+
+        res.status(200).send({
+          success: true,
+          data: users,
+          stats: {
+            totalUsers,
+            activeUsers,
+            newThisWeek,
+          },
+        });
       } catch (error) {
-        res.status(500).json({ message: "Failed to fetch users" });
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch users",
+          error: error.message,
+        });
       }
     });
 
