@@ -176,45 +176,45 @@ async function run() {
     });
 
     app.delete("/recipes/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
+      try {
+        const { id } = req.params;
 
-    const recipe = await recipeCollections.findOne({
-      _id: new ObjectId(id),
-    });
+        const recipe = await recipeCollections.findOne({
+          _id: new ObjectId(id),
+        });
 
-    if (!recipe) {
-      return res.status(404).send({
-        success: false,
-        message: "Recipe not found",
-      });
-    }
+        if (!recipe) {
+          return res.status(404).send({
+            success: false,
+            message: "Recipe not found",
+          });
+        }
 
-    await recipeCollections.deleteOne({
-      _id: new ObjectId(id),
-    });
+        await recipeCollections.deleteOne({
+          _id: new ObjectId(id),
+        });
 
-    await reportCollections.updateMany(
-      { recipeId: id },
-      {
-        $set: {
-          status: "resolved",
-          resolvedAt: new Date().toISOString(),
-        },
+        await reportCollections.updateMany(
+          { recipeId: id },
+          {
+            $set: {
+              status: "resolved",
+              resolvedAt: new Date().toISOString(),
+            },
+          },
+        );
+
+        res.send({
+          success: true,
+          message: "Recipe deleted and reports resolved",
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
       }
-    );
-
-    res.send({
-      success: true,
-      message: "Recipe deleted and reports resolved",
     });
-  } catch (error) {
-    res.status(500).send({
-      success: false,
-      message: error.message,
-    });
-  }
-});
 
     // Favorites API's
     app.get("/favorites", async (req, res) => {
@@ -463,6 +463,32 @@ async function run() {
           success: true,
           message: "Report submitted successfully",
           insertedId: result.insertedId,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
+    });
+
+    app.patch("/reports/:id/", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        const result = await reportCollections.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              status: "resolved",
+              resolvedAt: new Date().toISOString(),
+            },
+          },
+        );
+
+        res.send({
+          success: true,
+          message: "Report resolved",
         });
       } catch (error) {
         res.status(500).send({
