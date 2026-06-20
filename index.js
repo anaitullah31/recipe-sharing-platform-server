@@ -28,6 +28,8 @@ async function run() {
     const recipeCollections = client.db("recipehub").collection("recipes");
     const favoriteCollections = client.db("recipehub").collection("favorites");
     const reportCollections = client.db("recipehub").collection("reports");
+    const paymentCollections = client.db("recipehub").collection("payments");
+    const planCollections = client.db("recipehub").collection("plans");
 
     // Users API's
     app.get("/users", async (req, res) => {
@@ -678,6 +680,65 @@ async function run() {
         res.send({
           success: true,
           message: "Report resolved",
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
+    });
+
+    // Plans API's
+    app.get("/plans", async (req, res) => {
+      try {
+        const plans = await planCollections
+          .find({})
+          .sort({ price: 1 })
+          .toArray();
+
+        res.send({
+          success: true,
+          data: plans,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
+    });
+
+    // Payments API's
+    app.post("/payments", async (req, res) => {
+      try {
+        const paymentData = {
+          ...req.body,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        const result = await paymentCollections.insertOne(paymentData);
+
+        if (paymentData.paymentType === "premium") {
+          await userCollections.updateOne(
+            { email: paymentData.userEmail },
+            {
+              $set: {
+                plan: "premium",
+                updatedAt: new Date().toISOString(),
+              },
+            },
+          );
+        }
+
+        res.status(201).send({
+          success: true,
+          message:
+            paymentData.paymentType === "premium"
+              ? "Payment saved and plan upgraded"
+              : "Recipe payment saved successfully",
+          insertedId: result.insertedId,
         });
       } catch (error) {
         res.status(500).send({
