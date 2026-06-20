@@ -710,6 +710,33 @@ async function run() {
     });
 
     // Payments API's
+    app.get("/payments", async (req, res) => {
+      try {
+        const { userEmail } = req.query;
+
+        const filter = {};
+
+        if (userEmail) {
+          filter.userEmail = userEmail;
+        }
+
+        const payments = await paymentCollections
+          .find(filter)
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.send({
+          success: true,
+          data: payments,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
+    });
+
     app.post("/payments", async (req, res) => {
       try {
         const paymentData = {
