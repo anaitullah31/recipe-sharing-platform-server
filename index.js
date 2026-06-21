@@ -214,7 +214,7 @@ async function run() {
     // Recipes API's
     app.get("/recipes", async (req, res) => {
       try {
-        const { authorEmail } = req.query;
+        const { authorEmail, featured, popular, limit } = req.query;
 
         const filter = {};
 
@@ -222,10 +222,25 @@ async function run() {
           filter.authorEmail = authorEmail;
         }
 
-        const recipes = await recipeCollections
-          .find(filter)
-          .sort({ createdAt: -1 })
-          .toArray();
+        if (featured === "true") {
+          filter.isFeatured = true;
+        }
+
+        const maxLimit = Number(limit) || 0;
+
+        let sortOption = { createdAt: -1 };
+
+        if (popular === "true") {
+          sortOption = { likesCount: -1 };
+        }
+
+        let cursor = recipeCollections.find(filter).sort(sortOption);
+
+        if (maxLimit > 0) {
+          cursor = cursor.limit(maxLimit);
+        }
+
+        const recipes = await cursor.toArray();
 
         res.send({
           success: true,
