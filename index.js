@@ -71,6 +71,11 @@ async function run() {
     // Users API's
     app.get("/users", async (req, res) => {
       try {
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 10;
+
+        const skip = (page - 1) * limit;
+
         const now = new Date();
 
         const sevenDaysAgo = new Date();
@@ -79,6 +84,8 @@ async function run() {
         const users = await userCollections
           .find({})
           .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
           .toArray();
 
         const totalUsers = await userCollections.countDocuments();
@@ -100,6 +107,14 @@ async function run() {
             totalUsers,
             activeUsers,
             newThisWeek,
+          },
+          pagination: {
+            total: totalUsers,
+            page,
+            limit,
+            totalPages: Math.ceil(totalUsers / limit),
+            hasPrevPage: page > 1,
+            hasNextPage: page < Math.ceil(totalUsers / limit),
           },
         });
       } catch (error) {
@@ -481,21 +496,39 @@ async function run() {
       try {
         const { userEmail, userId } = req.query;
 
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
         if (!userEmail && !userId) {
           return res.status(400).send({
             success: false,
             message: "userEmail or userId is required",
           });
         }
+
         const filter = userEmail ? { userEmail } : { userId };
+
+        const totalFavorites = await favoriteCollections.countDocuments(filter);
+
         const favorites = await favoriteCollections
           .find(filter)
           .sort({ addedAt: -1 })
+          .skip(skip)
+          .limit(limit)
           .toArray();
 
         res.send({
           success: true,
           data: favorites,
+          pagination: {
+            total: totalFavorites,
+            page,
+            limit,
+            totalPages: Math.ceil(totalFavorites / limit),
+            hasPrevPage: page > 1,
+            hasNextPage: page < Math.ceil(totalFavorites / limit),
+          },
         });
       } catch (error) {
         res.status(500).send({
@@ -780,32 +813,68 @@ async function run() {
     });
 
     // Payments API's
-    app.get("/payments", async (req, res) => {
-      try {
-        const { userEmail } = req.query;
+app.get("/payments", async (req, res) => {
+  try {
+    const { userEmail } = req.query;
 
-        const filter = {};
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-        if (userEmail) {
-          filter.userEmail = userEmail;
-        }
+    const filter = {};
 
-        const payments = await paymentCollections
-          .find(filter)
-          .sort({ createdAt: -1 })
-          .toArray();
+    if (userEmail) {
+      filter.userEmail = userEmail;
+    }
 
-        res.send({
-          success: true,
-          data: payments,
-        });
-      } catch (error) {
-        res.status(500).send({
-          success: false,
-          message: error.message,
-        });
-      }
+    const totalPayments = await paymentCollections.countDocuments(filter);
+
+    const payments = await paymentCollections
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .toArray();
+
+    const allPayments = await paymentCollections.find(filter).toArray();
+
+    const grossRevenue = allPayments.reduce(
+      (total, payment) => total + Number(payment.amount || 0),
+      0,
+    );
+
+    const activeSubscriptions = allPayments.filter(
+      (payment) => payment.paymentType === "premium",
+    ).length;
+
+    const successfulPayments = allPayments.filter(
+      (payment) => payment.paymentStatus === "paid",
+    ).length;
+
+    res.send({
+      success: true,
+      data: payments,
+      stats: {
+        grossRevenue,
+        activeSubscriptions,
+        successfulPayments,
+      },
+      pagination: {
+        total: totalPayments,
+        page,
+        limit,
+        totalPages: Math.ceil(totalPayments / limit),
+        hasPrevPage: page > 1,
+        hasNextPage: page < Math.ceil(totalPayments / limit),
+      },
     });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message,
+    });
+  }
+});
 
     app.post("/payments", async (req, res) => {
       try {
