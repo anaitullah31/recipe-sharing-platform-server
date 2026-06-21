@@ -214,7 +214,13 @@ async function run() {
     // Recipes API's
     app.get("/recipes", async (req, res) => {
       try {
-        const { authorEmail, featured, popular, limit } = req.query;
+        const {
+          authorEmail,
+          featured,
+          popular,
+          limit = 8,
+          page = 1,
+        } = req.query;
 
         const filter = {};
 
@@ -226,7 +232,9 @@ async function run() {
           filter.isFeatured = true;
         }
 
-        const maxLimit = Number(limit) || 0;
+        const currentPage = Math.max(Number(page), 1);
+        const perPage = Math.max(Number(limit), 1);
+        const skip = (currentPage - 1) * perPage;
 
         let sortOption = { createdAt: -1 };
 
@@ -234,17 +242,26 @@ async function run() {
           sortOption = { likesCount: -1 };
         }
 
-        let cursor = recipeCollections.find(filter).sort(sortOption);
+        const total = await recipeCollections.countDocuments(filter);
 
-        if (maxLimit > 0) {
-          cursor = cursor.limit(maxLimit);
-        }
-
-        const recipes = await cursor.toArray();
+        const recipes = await recipeCollections
+          .find(filter)
+          .sort(sortOption)
+          .skip(skip)
+          .limit(perPage)
+          .toArray();
 
         res.send({
           success: true,
           data: recipes,
+          pagination: {
+            total,
+            page: currentPage,
+            limit: perPage,
+            totalPages: Math.ceil(total / perPage),
+            hasPrevPage: currentPage > 1,
+            hasNextPage: currentPage < Math.ceil(total / perPage),
+          },
         });
       } catch (error) {
         res.status(500).send({
@@ -664,6 +681,7 @@ async function run() {
             resolved: resolvedCount,
           },
           pagination: {
+            total: totalReports,
             page,
             limit,
             totalPages: Math.ceil(totalReports / limit),
