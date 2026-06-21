@@ -25,11 +25,48 @@ async function run() {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
     const userCollections = client.db("recipehub").collection("user");
+    const sessionCollections = client.db("recipehub").collection("session");
     const recipeCollections = client.db("recipehub").collection("recipes");
     const favoriteCollections = client.db("recipehub").collection("favorites");
     const reportCollections = client.db("recipehub").collection("reports");
     const paymentCollections = client.db("recipehub").collection("payments");
     const planCollections = client.db("recipehub").collection("plans");
+
+    // Verify Token
+    const verifyToken = async (req, res, next) => {
+      const authHeader = req.headers?.authorization;
+      if (!authHeader) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+      const token = authHeader.split(" ")[1];
+      if (!token) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+      const query = { token: token };
+      const session = await sessionCollections.findOne(query);
+      const userId = session?.userId;
+      const userQuery = {
+        _id: userId,
+      };
+      const user = await userCollections.findOne(userQuery);
+      req.user = user;
+
+      next();
+    };
+
+    const verifyUser = async (req, res, next) => {
+      if (req?.user?.role !== "user") {
+        return res.status(403).send({ message: "forbiden access" });
+      }
+      next();
+    };
+
+    const verifyAdmin = async (req, res, next) => {
+      if (req?.user?.role !== "admin") {
+        return res.status(403).send({ message: "forbiden access" });
+      }
+      next();
+    };
 
     // Users API's
     app.get("/users", async (req, res) => {
