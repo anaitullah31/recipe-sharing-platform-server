@@ -69,7 +69,7 @@ async function run() {
     };
 
     // Users API's
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const page = Number(req.query.page) || 1;
         const limit = Number(req.query.limit) || 10;
@@ -126,7 +126,7 @@ async function run() {
       }
     });
 
-    app.get("/users/:id", async (req, res) => {
+    app.get("/users/:id", verifyToken, async (req, res) => {
       try {
         const { id } = req.params;
 
@@ -134,6 +134,18 @@ async function run() {
           return res.status(400).json({
             success: false,
             message: "Invalid user id",
+          });
+        }
+
+        const loggedInUser = req.user;
+
+        const isOwner = loggedInUser?._id?.toString() === id;
+        const isAdmin = loggedInUser?.role === "admin";
+
+        if (!isOwner && !isAdmin) {
+          return res.status(403).json({
+            success: false,
+            message: "forbidden access",
           });
         }
 
@@ -159,7 +171,7 @@ async function run() {
       }
     });
 
-    app.patch("/users/:id", async (req, res) => {
+    app.patch("/users/:id", verifyToken, async (req, res) => {
       try {
         const { id } = req.params;
         const { currentUserEmail, currentUserId } = req.body;
@@ -286,7 +298,7 @@ async function run() {
       }
     });
 
-    app.get("/recipes/:id", async (req, res) => {
+    app.get("/recipes/:id", verifyToken, async (req, res) => {
       try {
         const { id } = req.params;
 
@@ -320,7 +332,7 @@ async function run() {
       }
     });
 
-    app.post("/recipes", async (req, res) => {
+    app.post("/recipes", verifyToken, async (req, res) => {
       try {
         const recipeData = {
           ...req.body,
@@ -343,114 +355,148 @@ async function run() {
       }
     });
 
-    app.patch("/recipes/:id", async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { action, userEmail, updateData } = req.body;
+app.patch("/recipes/:id", verifyToken, async (req, res) => {
+// ✅ JWT CHANGE END
+  try {
+    const { id } = req.params;
+    const { action, userEmail, updateData } = req.body;
 
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({
-            success: false,
-            message: "Invalid recipe id",
-          });
-        }
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid recipe id",
+      });
+    }
 
-        const filter = { _id: new ObjectId(id) };
-        const recipe = await recipeCollections.findOne(filter);
+    const filter = { _id: new ObjectId(id) };
+    const recipe = await recipeCollections.findOne(filter);
 
-        if (!recipe) {
-          return res.status(404).send({
-            success: false,
-            message: "Recipe not found",
-          });
-        }
+    if (!recipe) {
+      return res.status(404).send({
+        success: false,
+        message: "Recipe not found",
+      });
+    }
 
-        // Like / Unlike
-        if (action === "like") {
-          if (!userEmail) {
-            return res.status(400).send({
-              success: false,
-              message: "User email is required",
-            });
-          }
+    // ✅ JWT CHANGE START
+    const loggedInUserEmail = req.user?.email;
+    const loggedInUserRole = req.user?.role;
 
-          const alreadyLiked = recipe.likedBy?.includes(userEmail);
+    const isAdmin = loggedInUserRole === "admin";
+    const isOwner = recipe.authorEmail === loggedInUserEmail;
+    // ✅ JWT CHANGE END
 
-          if (alreadyLiked) {
-            await recipeCollections.updateOne(filter, {
-              $pull: { likedBy: userEmail },
-              $inc: { likesCount: -1 },
-            });
+    // Like / Unlike
+    if (action === "like") {
+      // ✅ JWT CHANGE START
+      // Don't trust userEmail from frontend. Use verified JWT user email.
+      const verifiedUserEmail = loggedInUserEmail;
 
-            return res.send({
-              success: true,
-              liked: false,
-              likesCount: Math.max((recipe.likesCount || 1) - 1, 0),
-              message: "Recipe unliked",
-            });
-          }
-
-          await recipeCollections.updateOne(filter, {
-            $addToSet: { likedBy: userEmail },
-            $inc: { likesCount: 1 },
-          });
-
-          return res.send({
-            success: true,
-            liked: true,
-            likesCount: (recipe.likesCount || 0) + 1,
-            message: "Recipe liked",
-          });
-        }
-
-        // Feature / Unfeature
-        if (action === "feature") {
-          const newFeaturedStatus = !recipe.isFeatured;
-
-          await recipeCollections.updateOne(filter, {
-            $set: {
-              isFeatured: newFeaturedStatus,
-              updatedAt: new Date().toISOString(),
-            },
-          });
-
-          return res.send({
-            success: true,
-            isFeatured: newFeaturedStatus,
-            message: newFeaturedStatus
-              ? "Recipe marked as featured"
-              : "Recipe removed from featured",
-          });
-        }
-
-        // General recipe update
-        if (action === "update") {
-          await recipeCollections.updateOne(filter, {
-            $set: {
-              ...updateData,
-              updatedAt: new Date().toISOString(),
-            },
-          });
-
-          return res.send({
-            success: true,
-            message: "Recipe updated successfully",
-          });
-        }
-
-        res.status(400).send({
+      if (!verifiedUserEmail) {
+        return res.status(400).send({
           success: false,
-          message: "Invalid action",
-        });
-      } catch (error) {
-        res.status(500).send({
-          success: false,
-          message: error.message,
+          message: "User email is required",
         });
       }
-    });
 
-    app.delete("/recipes/:id", async (req, res) => {
+      const alreadyLiked = recipe.likedBy?.includes(verifiedUserEmail);
+
+      if (alreadyLiked) {
+        await recipeCollections.updateOne(filter, {
+          $pull: { likedBy: verifiedUserEmail },
+          $inc: { likesCount: -1 },
+        });
+        // ✅ JWT CHANGE END
+
+        return res.send({
+          success: true,
+          liked: false,
+          likesCount: Math.max((recipe.likesCount || 1) - 1, 0),
+          message: "Recipe unliked",
+        });
+      }
+
+      await recipeCollections.updateOne(filter, {
+        // ✅ JWT CHANGE START
+        $addToSet: { likedBy: verifiedUserEmail },
+        // ✅ JWT CHANGE END
+        $inc: { likesCount: 1 },
+      });
+
+      return res.send({
+        success: true,
+        liked: true,
+        likesCount: (recipe.likesCount || 0) + 1,
+        message: "Recipe liked",
+      });
+    }
+
+    // Feature / Unfeature
+    if (action === "feature") {
+      // ✅ JWT CHANGE START
+      if (!isAdmin) {
+        return res.status(403).send({
+          success: false,
+          message: "forbidden access",
+        });
+      }
+      // ✅ JWT CHANGE END
+
+      const newFeaturedStatus = !recipe.isFeatured;
+
+      await recipeCollections.updateOne(filter, {
+        $set: {
+          isFeatured: newFeaturedStatus,
+          updatedAt: new Date().toISOString(),
+        },
+      });
+
+      return res.send({
+        success: true,
+        isFeatured: newFeaturedStatus,
+        message: newFeaturedStatus
+          ? "Recipe marked as featured"
+          : "Recipe removed from featured",
+      });
+    }
+
+    // General recipe update
+    if (action === "update") {
+      // ✅ JWT CHANGE START
+      if (!isAdmin && !isOwner) {
+        return res.status(403).send({
+          success: false,
+          message: "forbidden access",
+        });
+      }
+      // ✅ JWT CHANGE END
+
+      await recipeCollections.updateOne(filter, {
+        $set: {
+          ...updateData,
+          updatedAt: new Date().toISOString(),
+        },
+      });
+
+      return res.send({
+        success: true,
+        message: "Recipe updated successfully",
+      });
+    }
+
+    res.status(400).send({
+      success: false,
+      message: "Invalid action",
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+    app.delete("/recipes/:id", verifyToken, async (req, res) => {
       try {
         const { id } = req.params;
 
@@ -492,7 +538,7 @@ async function run() {
     });
 
     // Favorites API's
-    app.get("/favorites", async (req, res) => {
+    app.get("/favorites", verifyToken, async (req, res) => {
       try {
         const { userEmail, userId } = req.query;
 
@@ -538,7 +584,7 @@ async function run() {
       }
     });
 
-    app.post("/favorites", async (req, res) => {
+    app.post("/favorites", verifyToken, async (req, res) => {
       try {
         const { userEmail, userId, recipeId, recipeName, recipeImage } =
           req.body;
@@ -591,7 +637,7 @@ async function run() {
       }
     });
 
-    app.delete("/favorites/:favoriteId", async (req, res) => {
+    app.delete("/favorites/:favoriteId", verifyToken, async (req, res) => {
       try {
         const { favoriteId } = req.params;
 
@@ -626,7 +672,7 @@ async function run() {
     });
 
     // Reports API's
-    app.get("/reports", async (req, res) => {
+    app.get("/reports", verifyToken, async (req, res) => {
       try {
         const page = Number(req.query.page) || 1;
         const limit = Number(req.query.limit) || 10;
@@ -730,7 +776,7 @@ async function run() {
       }
     });
 
-    app.post("/reports", async (req, res) => {
+    app.post("/reports", verifyToken, async (req, res) => {
       try {
         const { recipeId, recipeName, userEmail, reason, comment } = req.body;
 
@@ -766,7 +812,7 @@ async function run() {
       }
     });
 
-    app.patch("/reports/:id/", async (req, res) => {
+    app.patch("/reports/:id/", verifyToken, async (req, res) => {
       try {
         const { id } = req.params;
 
@@ -793,7 +839,7 @@ async function run() {
     });
 
     // Plans API's
-    app.get("/plans", async (req, res) => {
+    app.get("/plans", verifyToken, async (req, res) => {
       try {
         const plans = await planCollections
           .find({})
@@ -813,70 +859,70 @@ async function run() {
     });
 
     // Payments API's
-app.get("/payments", async (req, res) => {
-  try {
-    const { userEmail } = req.query;
+    app.get("/payments", verifyToken, async (req, res) => {
+      try {
+        const { userEmail } = req.query;
 
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
 
-    const filter = {};
+        const filter = {};
 
-    if (userEmail) {
-      filter.userEmail = userEmail;
-    }
+        if (userEmail) {
+          filter.userEmail = userEmail;
+        }
 
-    const totalPayments = await paymentCollections.countDocuments(filter);
+        const totalPayments = await paymentCollections.countDocuments(filter);
 
-    const payments = await paymentCollections
-      .find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .toArray();
+        const payments = await paymentCollections
+          .find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .toArray();
 
-    const allPayments = await paymentCollections.find(filter).toArray();
+        const allPayments = await paymentCollections.find(filter).toArray();
 
-    const grossRevenue = allPayments.reduce(
-      (total, payment) => total + Number(payment.amount || 0),
-      0,
-    );
+        const grossRevenue = allPayments.reduce(
+          (total, payment) => total + Number(payment.amount || 0),
+          0,
+        );
 
-    const activeSubscriptions = allPayments.filter(
-      (payment) => payment.paymentType === "premium",
-    ).length;
+        const activeSubscriptions = allPayments.filter(
+          (payment) => payment.paymentType === "premium",
+        ).length;
 
-    const successfulPayments = allPayments.filter(
-      (payment) => payment.paymentStatus === "paid",
-    ).length;
+        const successfulPayments = allPayments.filter(
+          (payment) => payment.paymentStatus === "paid",
+        ).length;
 
-    res.send({
-      success: true,
-      data: payments,
-      stats: {
-        grossRevenue,
-        activeSubscriptions,
-        successfulPayments,
-      },
-      pagination: {
-        total: totalPayments,
-        page,
-        limit,
-        totalPages: Math.ceil(totalPayments / limit),
-        hasPrevPage: page > 1,
-        hasNextPage: page < Math.ceil(totalPayments / limit),
-      },
+        res.send({
+          success: true,
+          data: payments,
+          stats: {
+            grossRevenue,
+            activeSubscriptions,
+            successfulPayments,
+          },
+          pagination: {
+            total: totalPayments,
+            page,
+            limit,
+            totalPages: Math.ceil(totalPayments / limit),
+            hasPrevPage: page > 1,
+            hasNextPage: page < Math.ceil(totalPayments / limit),
+          },
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
     });
-  } catch (error) {
-    res.status(500).send({
-      success: false,
-      message: error.message,
-    });
-  }
-});
 
-    app.post("/payments", async (req, res) => {
+    app.post("/payments", verifyToken, async (req, res) => {
       try {
         const paymentData = {
           ...req.body,
