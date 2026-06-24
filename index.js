@@ -248,7 +248,18 @@ app.patch("/users/:id", verifyToken, async (req, res) => {
 // Recipes API's
 app.get("/recipes", async (req, res) => {
   try {
-    const { authorEmail, featured, popular, limit = 8, page = 1 } = req.query;
+    const {
+      authorEmail,
+      featured,
+      popular,
+      limit = 8,
+      page = 1,
+      search,
+      category,
+      cuisineType,
+      difficultyLevel,
+      sortBy,
+    } = req.query;
 
     const filter = {};
 
@@ -260,6 +271,30 @@ app.get("/recipes", async (req, res) => {
       filter.isFeatured = true;
     }
 
+    if (search) {
+      filter.$or = [
+        { recipeName: { $regex: search, $options: "i" } },
+        { authorName: { $regex: search, $options: "i" } },
+        { instructions: { $regex: search, $options: "i" } },
+        { ingredients: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    if (category) {
+      filter.category = { $regex: `^${category}$`, $options: "i" };
+    }
+
+    if (cuisineType) {
+      filter.cuisineType = { $regex: `^${cuisineType}$`, $options: "i" };
+    }
+
+    if (difficultyLevel) {
+      filter.difficultyLevel = {
+        $regex: `^${difficultyLevel}$`,
+        $options: "i",
+      };
+    }
+
     const currentPage = Math.max(Number(page), 1);
     const perPage = Math.max(Number(limit), 1);
     const skip = (currentPage - 1) * perPage;
@@ -267,6 +302,18 @@ app.get("/recipes", async (req, res) => {
     let sortOption = { createdAt: -1 };
 
     if (popular === "true") {
+      sortOption = { likesCount: -1 };
+    }
+
+    if (sortBy === "newest") {
+      sortOption = { createdAt: -1 };
+    }
+
+    if (sortBy === "oldest") {
+      sortOption = { createdAt: 1 };
+    }
+
+    if (sortBy === "popular") {
       sortOption = { likesCount: -1 };
     }
 
